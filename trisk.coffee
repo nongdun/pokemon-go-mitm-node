@@ -24,6 +24,7 @@ pokemons = []
 currentLocation = null
 
 server = new PokemonGoMITM port: 8081
+	# Replace successful catch with escape to save time
 	.addResponseHandler "CatchPokemon", (data) ->
 		console.log "tried to catch pokemon", data
 		#data.status = 'CATCH_FLEE' if data.status is 'CATCH_SUCCESS'
@@ -49,14 +50,14 @@ server = new PokemonGoMITM port: 8081
 		seen = {}
 		addPokemon = (pokemon) ->
 			return if seen[hash = pokemon.spawnpoint_id + ":" + pokemon.pokemon_data.pokemon_id]
-			return if pokemon.expiration_timestamp_ms < 0
+			return if pokemon.time_till_hidden_ms < 0
 
 			seen[hash] = true
 			pokemons.push
 				type: pokemon.pokemon_data.pokemon_id
 				latitude: pokemon.latitude
 				longitude: pokemon.longitude
-				expirationMs: pokemon.time_till_hidden_ms
+				expirationMs: Date.now() + pokemon.time_till_hidden_ms
 				data: pokemon.pokemon_data
 
 		for cell in data.map_cells
@@ -71,8 +72,9 @@ server = new PokemonGoMITM port: 8081
 
 		for modifier in data.modifiers
 			if modifier.item_id is 'ITEM_TROY_DISK'
-				info += "Lure expires in "+moment(Number(modifier.expiration_timestamp_ms)).toNow()+"\n"
-				info += "Lure set by "+modifier.deployer_player_codename+"\n"
+				expires = moment(Number(modifier.expiration_timestamp_ms)).toNow()
+				info += "Lure expires in #{expires}\n"
+				info += "Lure set by #{modifier.deployer_player_codename}\n"
 				#info += "Lure expires in "+moment(data.modifiers[0].expirationMs).toNow()+"\n"
 
 		info += if pokemons.length
@@ -87,8 +89,9 @@ server = new PokemonGoMITM port: 8081
 pokemonInfo = (pokemon) ->
 	console.log pokemon
 	name = changeCase.titleCase pokemon.data.pokemon_id
+	cp = pokemon.data.cp
 	position = new LatLon pokemon.latitude, pokemon.longitude
-	expiration = moment(Number(pokemon.expirationMs)).humanize()
+	expires = moment(Number(pokemon.expirationMs)).toNow
 	distance = Math.floor currentLocation.distanceTo position
 	bearing = currentLocation.bearingTo position
 	direction = switch true
@@ -102,4 +105,4 @@ pokemonInfo = (pokemon) ->
 		when bearing>15 then "NE"
 		else "N"
 
-	"#{name} in #{distance}m -> #{direction} expiring #expiration"
+	"#{name} #{cp} CP in #{distance}m -> #{direction} expires in #{expires}"
