@@ -24,12 +24,10 @@ pokemons = []
 currentLocation = null
 
 server = new PokemonGoMITM port: 8081
-	# Append the IV percentage to the end of names in our inventory
+	# Append the IV% to the end of names in our inventory
 	.addResponseHandler "GetInventory", (data) ->
 		if data.inventory_delta
-			for item in data.inventory_delta.inventory_items
-				if !item.inventory_item_data
-					continue
+			for item in data.inventory_delta.inventory_items when item.inventory_item_data
 				if pokemon = item.inventory_item_data.pokemon_data
 					name = pokemon.nickname or changeCase.titleCase pokemon.pokemon_id
 					atk = pokemon.individual_attack or 0
@@ -112,6 +110,12 @@ server = new PokemonGoMITM port: 8081
 
 	.addRequestHandler "CatchPokemon", (data) ->
 		console.log "trying to catch pokemon", data
+		if data.spin_modifier < 0.85
+			data.spin_modifier = 0.80 + data.spin_modifier % 0.10
+		if data.normalized_reticle_size < 1.95
+			data.normalized_reticle_size = 1.90 + data.normalized_reticle_size % 0.10
+		if data.hit_pokemon
+			data.normalized_hit_position = 1.0
 		data
 
 	# Replace successful catch with escape to save time
