@@ -24,19 +24,20 @@ pokemons = []
 currentLocation = null
 
 server = new PokemonGoMITM port: 8081
-	# Replace successful catch with escape to save time
-	.addResponseHandler "CatchPokemon", (data) ->
-		console.log "tried to catch pokemon", data
-		#data.status = 'CATCH_FLEE' if data.status is 'CATCH_SUCCESS'
-		data.status = 'CATCH_ESCAPE' if data.status is 'CATCH_SUCCESS'
-		data
 	# Append the IV percentage to the end of names in our inventory
 	.addResponseHandler "GetInventory", (data) ->
 		if data.inventory_delta
 			for item in data.inventory_delta.inventory_items
+				if !item.inventory_item_data
+					continue
 				if pokemon = item.inventory_item_data.pokemon_data
-					iv = 100 * (pokemon.individual_attack + pokemon.individual_defense + pokemon.individual_stamina) / 45
-					pokemon.nickname = "#{pokemon.nickname} #{iv}%"
+					name = pokemon.nickname or changeCase.titleCase pokemon.pokemon_id
+					atk = pokemon.individual_attack or 0
+					def = pokemon.individual_defense or 0
+					sta = pokemon.individual_stamina or 0
+					iv = Math.round((atk + def + sta) * 100/45)
+					pokemon.nickname = "#{name} #{iv}%"
+
 		data
 	# Fetch our current location as soon as it gets passed to the API
 	.addRequestHandler "GetMapObjects", (data) ->
@@ -53,6 +54,7 @@ server = new PokemonGoMITM port: 8081
 			return if pokemon.time_till_hidden_ms < 0
 
 			seen[hash] = true
+			console.log "new wild pokemon", pokemon
 			pokemons.push
 				type: pokemon.pokemon_data.pokemon_id
 				latitude: pokemon.latitude
@@ -70,12 +72,31 @@ server = new PokemonGoMITM port: 8081
 		console.log "fetched fort request", data
 		info = ""
 
+		# Populate some neat info about the pokemon's whereabouts 
+		pokemonInfo = (pokemon) ->
+			name = changeCase.titleCase pokemon.data.pokemon_id
+
+			position = new LatLon pokemon.latitude, pokemon.longitude
+			expires = moment(Number(pokemon.expirationMs)).fromNow()
+			distance = Math.floor currentLocation.distanceTo position
+			bearing = currentLocation.bearingTo position
+			direction = switch true
+				when bearing>330 then "N"
+				when bearing>285 then "NW"
+				when bearing>240 then "W"
+				when bearing>195 then "SW"
+				when bearing>150 then "S"
+				when bearing>105 then "SE"
+				when bearing>60 then "E"
+				when bearing>15 then "NE"
+				else "N"
+
+			"#{name} @#{direction} #{distance}m expires #{expires}"
+
 		for modifier in data.modifiers
 			if modifier.item_id is 'ITEM_TROY_DISK'
-				expires = moment(Number(modifier.expiration_timestamp_ms)).toNow()
-				info += "Lure expires in #{expires}\n"
-				info += "Lure set by #{modifier.deployer_player_codename}\n"
-				#info += "Lure expires in "+moment(data.modifiers[0].expirationMs).toNow()+"\n"
+				expires = moment(Number(modifier.expiration_timestamp_ms)).fromNow()
+				info += "Lure by #{modifier.deployer_player_codename} expires #{expires}\n"
 
 		info += if pokemons.length
 			(pokemonInfo(pokemon) for pokemon in pokemons).join "\n"
@@ -85,24 +106,17 @@ server = new PokemonGoMITM port: 8081
 		data.description = info
 		data
 
-# Populate some neat info about the pokemon's whereabouts 
-pokemonInfo = (pokemon) ->
-	console.log pokemon
-	name = changeCase.titleCase pokemon.data.pokemon_id
-	cp = pokemon.data.cp
-	position = new LatLon pokemon.latitude, pokemon.longitude
-	expires = moment(Number(pokemon.expirationMs)).toNow
-	distance = Math.floor currentLocation.distanceTo position
-	bearing = currentLocation.bearingTo position
-	direction = switch true
-		when bearing>330 then "N"
-		when bearing>285 then "NW"
-		when bearing>240 then "W"
-		when bearing>195 then "SW"
-		when bearing>150 then "S"
-		when bearing>105 then "SE"
-		when bearing>60 then "E"
-		when bearing>15 then "NE"
-		else "N"
+	# Get encounter info
+	.addResponseHandler "Encounter", (data) ->
+		console.log "encounter with pokemon", data
 
-	"#{name} #{cp} CP in #{distance}m -> #{direction} expires in #{expires}"
+	.addRequestHandler "CatchPokemon", (data) ->
+		console.log "trying to catch pokemon", data
+		data
+
+	# Replace successful catch with escape to save time
+	.addResponseHandler "CatchPokemon", (data) ->
+		console.log "tried to catch pokemon", data
+		data.status = 'CATCH_FLEE' if data.status is 'CATCH_SUCCESS'
+		data
+
