@@ -79,17 +79,17 @@ server = new PokemonGoMITM port: 8081
 			distance = Math.floor currentLocation.distanceTo position
 			bearing = currentLocation.bearingTo position
 			direction = switch true
-				when bearing>330 then "N"
-				when bearing>285 then "NW"
-				when bearing>240 then "W"
-				when bearing>195 then "SW"
-				when bearing>150 then "S"
-				when bearing>105 then "SE"
-				when bearing>60 then "E"
-				when bearing>15 then "NE"
-				else "N"
+				when bearing>330 then "⇧"
+				when bearing>285 then "⬁"
+				when bearing>240 then "⇦"
+				when bearing>195 then "⬃"
+				when bearing>150 then "⇩"
+				when bearing>105 then "⬂"
+				when bearing>60 then "⇨"
+				when bearing>15 then "⬀"
+				else "⇧"
 
-			"#{name} @#{direction} #{distance}m expires #{expires}"
+			"#{name} #{direction} #{distance}m expires #{expires}"
 
 		for modifier in data.modifiers
 			if modifier.item_id is 'ITEM_TROY_DISK'
@@ -99,7 +99,7 @@ server = new PokemonGoMITM port: 8081
 		info += if pokemons.length
 			(pokemonInfo(pokemon) for pokemon in pokemons).join "\n"
 		else
-			"No wild Pokémon nearby..."
+			"No wild Pokémon near you..."
 
 		data.description = info
 		data
