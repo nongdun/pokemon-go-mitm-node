@@ -70,7 +70,7 @@ server = new PokemonGoMITM port: 8081
 		console.log "fetched fort request", data
 		info = ""
 
-		# Populate some neat info about the pokemon's whereabouts 
+		# Populate some neat info about the pokemon's whereabouts
 		pokemonInfo = (pokemon) ->
 			name = changeCase.titleCase pokemon.data.pokemon_id
 
@@ -79,15 +79,15 @@ server = new PokemonGoMITM port: 8081
 			distance = Math.floor currentLocation.distanceTo position
 			bearing = currentLocation.bearingTo position
 			direction = switch true
-				when bearing>330 then "⇧"
-				when bearing>285 then "⬁"
-				when bearing>240 then "⇦"
-				when bearing>195 then "⬃"
-				when bearing>150 then "⇩"
-				when bearing>105 then "⬂"
-				when bearing>60 then "⇨"
-				when bearing>15 then "⬀"
-				else "⇧"
+				when bearing>330 then "↑"
+				when bearing>285 then "↖"
+				when bearing>240 then "←"
+				when bearing>195 then "↙"
+				when bearing>150 then "↓"
+				when bearing>105 then "↘"
+				when bearing>60 then "→"
+				when bearing>15 then "↗"
+				else "↑"
 
 			"#{name} #{direction} #{distance}m expires #{expires}"
 
