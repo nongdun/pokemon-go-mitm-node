@@ -132,20 +132,21 @@ server = new PokemonGoMITM port: 8081
 				expires = moment(Number(modifier.expiration_timestamp_ms)).fromNow()
 				info += "Lure by #{modifier.deployer_player_codename} expires #{expires}\n"
 
+		if currentLocation
+			loc = "#{currentLocation.lat},#{currentLocation.lon}"
+			img = "http://maps.googleapis.com/maps/api/staticmap?center=#{loc}&zoom=17&size=384x512&markers=color:blue%7Csize:tiny%7C#{loc}"
+
+			if pokemons.length
+				img += (pokemonMarker(pokemon) for pokemon in pokemons).join ""
+
+			data.image_urls.unshift img
+
 		info += if pokemons.length and currentLocation
 			(pokemonInfo(pokemon) for pokemon in pokemons).join "\n"
 		else
 			"No wild Pokémon near you..."
 
 		data.description = info
-
-		if currentLocation
-			img = "http://maps.googleapis.com/maps/api/staticmap?center=#{currentLocation.lat},#{currentLocation.lon}&zoom=17&size=384x512"
-
-			if pokemons.length
-				img += (pokemonMarker(pokemon) for pokemon in pokemons).join ""
-
-			data.image_urls = [ img ]
 		data
 
 	# Get encounter info
