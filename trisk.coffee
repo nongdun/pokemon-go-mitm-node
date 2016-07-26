@@ -12,7 +12,6 @@
   Enriches every PokeStop description with information about
   - directions to nearby wild pokemons
   - time left if a PokeStop has an active lure
-
 ###
 
 PokemonGoMITM = require './lib/pokemon-go-mitm'
@@ -21,6 +20,7 @@ moment = require 'moment'
 LatLon = require('geodesy').LatLonSpherical
 
 pokemons = []
+forts = []
 currentLocation = null
 
 server = new PokemonGoMITM port: 8081
@@ -39,10 +39,38 @@ server = new PokemonGoMITM port: 8081
 		data
 	# Fetch our current location as soon as it gets passed to the API
 	.addRequestHandler "GetMapObjects", (data) ->
-		currentLocation = new LatLon data.latitude, data.longitude
-		console.log "[+] Current position of the player #{currentLocation}"
+		currentLocation = new LatLon data.latitude, data.longitude if data.latitude
+		if data.latitude
+			console.log "[+] Current position of the player #{currentLocation}"
+
+		if not currentLocation
+			return false
+
+		for fort in forts when fort.type is 'CHECKPOINT'
+			if not fort.cooldown_complete_timestamp_ms or (Date.now() - (parseFloat(fort.cooldown_complete_timestamp_ms)-(3600*2*1000))) >= 300000
+				position = new LatLon fort.latitude, fort.longitude
+				distance = Math.floor currentLocation.distanceTo position
+				fort.cooldown_complete_timestamp_ms = Date.now().toString();
+				if distance < 30
+					server.craftRequest "FortSearch",
+					{
+						fort_id: fort.id,
+						fort_latitude: fort.latitude,
+						fort_longitude: fort.longitude,
+						player_latitude: fort.latitude,
+						player_longitude: fort.longitude
+					}
+						.then (data) ->
+							if data.result is 'SUCCESS'
+								console.log "[<-] Items awarded:", data.items_awarded
 		false
 
+	.addResponseHandler "GetMapObjects", (data) ->
+		forts = []
+		for cell in data.map_cells
+			for fort in cell.forts
+				forts.push fort
+		false
 	# Parse the wild pokemons nearby
 	.addResponseHandler "GetMapObjects", (data) ->
 		pokemons = []
@@ -91,17 +119,33 @@ server = new PokemonGoMITM port: 8081
 
 			"#{name} #{direction} #{distance}m expires #{expires}"
 
+		# Create map marker for pokemon location
+		pokemonMarker = (pokemon) ->
+			label = pokemon.data.pokemon_id.charAt(0)
+			icon = changeCase.paramCase pokemon.data.pokemon_id
+			marker = "label:#{label}%7Cicon:http://raw.github.com/msikma/pokesprite/master/icons/pokemon/regular/#{icon}.png"
+
+			"&markers=#{marker}%7C#{pokemon.latitude},#{pokemon.longitude}"
+
 		for modifier in data.modifiers
 			if modifier.item_id is 'ITEM_TROY_DISK'
 				expires = moment(Number(modifier.expiration_timestamp_ms)).fromNow()
 				info += "Lure by #{modifier.deployer_player_codename} expires #{expires}\n"
 
-		info += if pokemons.length
+		info += if pokemons.length and currentLocation
 			(pokemonInfo(pokemon) for pokemon in pokemons).join "\n"
 		else
 			"No wild Pokémon near you..."
 
 		data.description = info
+
+		if currentLocation
+			img = "http://maps.googleapis.com/maps/api/staticmap?center=#{currentLocation.lat},#{currentLocation.lon}&zoom=17&size=384x512"
+
+			if pokemons.length
+				img += (pokemonMarker(pokemon) for pokemon in pokemons).join ""
+
+			data.image_urls = [ img ]
 		data
 
 	# Get encounter info
