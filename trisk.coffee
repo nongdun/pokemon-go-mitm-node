@@ -20,6 +20,7 @@ moment = require 'moment'
 LatLon = require('geodesy').LatLonSpherical
 
 pokemons = []
+spawnPoints = []
 forts = []
 currentLocation = null
 
@@ -39,12 +40,8 @@ server = new PokemonGoMITM port: 8081
 		data
 	# Fetch our current location as soon as it gets passed to the API
 	.addRequestHandler "GetMapObjects", (data) ->
-		currentLocation = new LatLon data.latitude, data.longitude if data.latitude
-		if data.latitude
-			console.log "[+] Current position of the player #{currentLocation}"
-
-		if not currentLocation
-			return false
+		currentLocation = new LatLon data.latitude, data.longitude
+		console.log "[+] Current position of the player #{currentLocation}"
 
 		for fort in forts when fort.type is 'CHECKPOINT'
 			#if not fort.cooldown_complete_timestamp_ms or Date.now() >= parseInt(fort.cooldown_complete_timestamp_ms) - 7200000 + 300000
@@ -71,6 +68,12 @@ server = new PokemonGoMITM port: 8081
 			for fort in cell.forts
 				forts.push fort
 		false
+	.addResponseHandler "GetMapObjects", (data) ->
+		spawnPoints = []
+		for cell in data.map_cells
+			for sp in cell.spawn_points
+			    spawnPoints.push sp
+		false
 	# Parse the wild pokemons nearby
 	.addResponseHandler "GetMapObjects", (data) ->
 		timestampMs = Date.now()
@@ -83,30 +86,35 @@ server = new PokemonGoMITM port: 8081
 			return if seen[pokemon.encounter_id]
 			return if pokemon.time_till_hidden_ms < 0
 
-			seen[pokemon.encounter_id] = timestampMs + pokemon.time_till_hidden_ms
+			expirationMs = timestampMs + pokemon.time_till_hidden_ms
+			seen[pokemon.encounter_id] = expirationMs
+
 			console.log "new wild pokemon", pokemon
 			pokemons.push
-				encounter: pokemon.encounter_id
-				type: pokemon.pokemon_data.pokemon_id
+				encounterId: pokemon.encounter_id
 				latitude: pokemon.latitude
 				longitude: pokemon.longitude
-				expirationMs: seen[pokemon.encounter_id]
+				expirationMs: expirationMs
 				data: pokemon.pokemon_data
 
 		for cell in data.map_cells
 			addPokemon pokemon for pokemon in cell.wild_pokemons
 
-		# clean up expired pokemon
-		for pokemon in oldPokemons when pokemon.expirationMs > timestampMs
-			continue if seen[pokemon.encounter_id]
-			position = new LatLon pokemon.latitude, pokemon.longitude
-			continue if currentLocation.distanceTo position > tooFar
-			pokemons.push pokemon
+		if not currentLocation
+			return false
 
+		# Clean up expired pokemon
+		for pokemon in oldPokemons when pokemon.expirationMs > timestampMs
+			continue if seen[pokemon.encounterId]
+			position = new LatLon pokemon.latitude, pokemon.longitude
+			if tooFar > currentLocation.distanceTo position
+				pokemons.push pokemon
+
+		# Sort by nearest (rounded to 10m)
 		pokemons.sort (p1, p2) ->
-			pos1 = new LatLon p1.latitude, p1.longitude
-			pos2 = new LatLon p1.latitude, p1.longitude
-			Math.floor((currentLocation.distanceTo pos1 - currentLocation.distanceTo pos2) / 10)
+			d1 = currentLocation.distanceTo new LatLon(p1.latitude, p1.longitude)
+			d2 = currentLocation.distanceTo new LatLon(p1.latitude, p1.longitude)
+			Math.floor((d1 - d2) / 10)
 
 		false
 
@@ -114,6 +122,7 @@ server = new PokemonGoMITM port: 8081
 	.addResponseHandler "FortDetails", (data) ->
 		console.log "fetched fort request", data
 		info = ""
+		mapTooFar = 150
 
 		# Populate some neat info about the pokemon's whereabouts
 		pokemonInfo = (pokemon) ->
@@ -140,6 +149,9 @@ server = new PokemonGoMITM port: 8081
 		pokemonMarker = (pokemon) ->
 			label = pokemon.data.pokemon_id.charAt(0)
 			icon = changeCase.paramCase pokemon.data.pokemon_id
+			position = new LatLon pokemon.latitude, pokemon.longitude
+			if mapTooFar < currentLocation.distanceTo position
+				return ""
 			marker = "label:#{label}%7Cicon:http://raw.github.com/msikma/pokesprite/master/icons/pokemon/regular/#{icon}.png"
 
 			"&markers=#{marker}%7C#{pokemon.latitude},#{pokemon.longitude}"
@@ -152,6 +164,15 @@ server = new PokemonGoMITM port: 8081
 		if currentLocation
 			loc = "#{currentLocation.lat},#{currentLocation.lon}"
 			img = "http://maps.googleapis.com/maps/api/staticmap?center=#{loc}&zoom=17&size=384x512&markers=color:blue%7Csize:tiny%7C#{loc}"
+
+			spMarkers = ""
+			for sp in spawnPoints
+				position = new LatLon sp.latitude, sp.longitude
+				if mapTooFar > currentLocation.distanceTo position
+					spMarkers += "%7C#{sp.latitude},#{sp.longitude}"
+
+			if spMarkers.length 
+				img += "&markers=color:green%7Csize:tiny#{spMarkers}"
 
 			if pokemons.length
 				img += (pokemonMarker(pokemon) for pokemon in pokemons).join ""
