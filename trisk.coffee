@@ -46,23 +46,23 @@ server = new PokemonGoMITM port: 8081
 		if not currentLocation
 			return false
 
-		for fort in forts when fort.type is 'CHECKPOINT'
-			if not fort.cooldown_complete_timestamp_ms or (Date.now() - (parseFloat(fort.cooldown_complete_timestamp_ms)-(3600*2*1000))) >= 300000
-				position = new LatLon fort.latitude, fort.longitude
-				distance = Math.floor currentLocation.distanceTo position
-				fort.cooldown_complete_timestamp_ms = Date.now().toString();
-				if distance < 30
-					server.craftRequest "FortSearch",
-					{
-						fort_id: fort.id,
-						fort_latitude: fort.latitude,
-						fort_longitude: fort.longitude,
-						player_latitude: fort.latitude,
-						player_longitude: fort.longitude
-					}
-						.then (data) ->
-							if data.result is 'SUCCESS'
-								console.log "[<-] Items awarded:", data.items_awarded
+		#for fort in forts when fort.type is 'CHECKPOINT'
+		#	if not fort.cooldown_complete_timestamp_ms or (Date.now() - (parseFloat(fort.cooldown_complete_timestamp_ms)-(3600*2*1000))) >= 300000
+		#		position = new LatLon fort.latitude, fort.longitude
+		#		distance = Math.floor currentLocation.distanceTo position
+		#		fort.cooldown_complete_timestamp_ms = Date.now().toString();
+		#		if distance < 30
+		#			server.craftRequest "FortSearch",
+		#			{
+		#				fort_id: fort.id,
+		#				fort_latitude: fort.latitude,
+		#				fort_longitude: fort.longitude,
+		#				player_latitude: fort.latitude,
+		#				player_longitude: fort.longitude
+		#			}
+		#				.then (data) ->
+		#					if data.result is 'SUCCESS'
+		#						console.log "[<-] Items awarded:", data.items_awarded
 		false
 
 	.addResponseHandler "GetMapObjects", (data) ->
@@ -73,23 +73,40 @@ server = new PokemonGoMITM port: 8081
 		false
 	# Parse the wild pokemons nearby
 	.addResponseHandler "GetMapObjects", (data) ->
+		timestampMs = Date.now()
+		tooFar = 200
+
+		oldPokemons = pokemons
 		pokemons = []
 		seen = {}
 		addPokemon = (pokemon) ->
-			return if seen[hash = pokemon.spawnpoint_id + ":" + pokemon.pokemon_data.pokemon_id]
+			return if seen[pokemon.encounter_id]
 			return if pokemon.time_till_hidden_ms < 0
 
-			seen[hash] = true
+			seen[pokemon.encounter_id] = timestampMs + pokemon.time_till_hidden_ms
 			console.log "new wild pokemon", pokemon
 			pokemons.push
+				encounter: pokemon.encounter_id
 				type: pokemon.pokemon_data.pokemon_id
 				latitude: pokemon.latitude
 				longitude: pokemon.longitude
-				expirationMs: Date.now() + pokemon.time_till_hidden_ms
+				expirationMs: seen[pokemon.encounter_id]
 				data: pokemon.pokemon_data
 
 		for cell in data.map_cells
 			addPokemon pokemon for pokemon in cell.wild_pokemons
+
+		# clean up expired pokemon
+		for pokemon in oldPokemons when pokemon.expirationMs > timestampMs
+			continue if seen[pokemon.encounter_id]
+			position = new LatLon pokemon.latitude, pokemon.longitude
+			continue if currentLocation.distanceTo position > tooFar
+			pokemons.push pokemon
+
+		pokemons.sort (p1, p2) ->
+			pos1 = new LatLon p1.latitude, p1.longitude
+			pos2 = new LatLon p1.latitude, p1.longitude
+			Math.floor((currentLocation.distanceTo pos1 - currentLocation.distanceTo pos2) / 10)
 
 		false
 
