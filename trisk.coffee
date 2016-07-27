@@ -41,11 +41,12 @@ server = new PokemonGoMITM port: 8081
 	# Fetch our current location as soon as it gets passed to the API
 	.addRequestHandler "GetMapObjects", (data) ->
 		currentLocation = new LatLon data.latitude, data.longitude
+		timestampMs = Date.now()
 		console.log "[+] Current position of the player #{currentLocation}"
 
 		for fort in forts when fort.type is 'CHECKPOINT'
 			#if not fort.cooldown_complete_timestamp_ms or Date.now() >= parseInt(fort.cooldown_complete_timestamp_ms) - 7200000 + 300000
-			if not fort.cooldown_complete_timestamp_ms or Date.now() >= parseInt(fort.cooldown_complete_timestamp_ms)
+			if not fort.cooldown_complete_timestamp_ms or timestampMs >= parseInt(fort.cooldown_complete_timestamp_ms)
 				position = new LatLon fort.latitude, fort.longitude
 				distance = Math.floor currentLocation.distanceTo position
 				fort.cooldown_complete_timestamp_ms = (Date.now() + 300000).toString();
@@ -113,7 +114,7 @@ server = new PokemonGoMITM port: 8081
 		# Sort by nearest (rounded to 10m)
 		pokemons.sort (p1, p2) ->
 			d1 = currentLocation.distanceTo new LatLon(p1.latitude, p1.longitude)
-			d2 = currentLocation.distanceTo new LatLon(p1.latitude, p1.longitude)
+			d2 = currentLocation.distanceTo new LatLon(p2.latitude, p2.longitude)
 			Math.floor((d1 - d2) / 10)
 
 		false
