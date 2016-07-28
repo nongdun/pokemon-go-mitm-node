@@ -24,6 +24,14 @@ spawnPoints = []
 forts = []
 currentLocation = null
 
+# Get encounter details
+handleEncounter = (data, action) ->
+	console.log "#{action} with pokemon", data
+	if data.capture_probability
+		# Reporting high probability to app makes it harder to miss
+		data.capture_probability.capture_probability = new Float32Array [1, 1, 1]
+	data
+
 server = new PokemonGoMITM port: 8081
 	# Append the IV% to the end of names in our inventory
 	.addResponseHandler "GetInventory", (data) ->
@@ -188,9 +196,9 @@ server = new PokemonGoMITM port: 8081
 		data.description = info
 		data
 
-	# Get encounter info
-	.addResponseHandler "Encounter", (data) ->
-		console.log "encounter with pokemon", data
+	.addResponseHandler "Encounter", handleEncounter
+	.addResponseHandler "DiskEncounter", handleEncounter
+	.addResponseHandler "IncenseEncounter", handleEncounter
 
 	.addRequestHandler "CatchPokemon", (data) ->
 		console.log "trying to catch pokemon", data
@@ -207,4 +215,3 @@ server = new PokemonGoMITM port: 8081
 		console.log "tried to catch pokemon", data
 		data.status = 'CATCH_FLEE' if data.status is 'CATCH_SUCCESS'
 		data
-
