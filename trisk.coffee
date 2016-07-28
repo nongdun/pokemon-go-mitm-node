@@ -57,7 +57,7 @@ server = new PokemonGoMITM port: 8081
 			if not fort.cooldown_complete_timestamp_ms or timestampMs >= parseInt(fort.cooldown_complete_timestamp_ms)
 				position = new LatLon fort.latitude, fort.longitude
 				distance = Math.floor currentLocation.distanceTo position
-				fort.cooldown_complete_timestamp_ms = (Date.now() + 300000).toString();
+				fort.cooldown_complete_timestamp_ms = (timestampMs + 300000).toString();
 				if distance < 30
 					server.craftRequest "FortSearch", {
 							fort_id: fort.id,
@@ -215,3 +215,7 @@ server = new PokemonGoMITM port: 8081
 		console.log "tried to catch pokemon", data
 		data.status = 'CATCH_FLEE' if data.status is 'CATCH_SUCCESS'
 		data
+
+	# show incense response
+	.addResponseHandler "GetIncensePokemon", (data) ->
+		console.log "incense pokemon", data
