@@ -57,7 +57,6 @@ server = new PokemonGoMITM port: 8081
 			if not fort.cooldown_complete_timestamp_ms or timestampMs >= parseInt(fort.cooldown_complete_timestamp_ms)
 				position = new LatLon fort.latitude, fort.longitude
 				distance = Math.floor currentLocation.distanceTo position
-				fort.cooldown_complete_timestamp_ms = (timestampMs + 300000).toString();
 				if distance < 30
 					server.craftRequest "FortSearch", {
 							fort_id: fort.id,
@@ -68,6 +67,7 @@ server = new PokemonGoMITM port: 8081
 						}
 					.then (data) ->
 						if data.result is 'SUCCESS'
+							fort.cooldown_complete_timestamp_ms = (timestampMs + 300000).toString();
 							console.log "[<-] Items awarded:", data.items_awarded
 		false
 
@@ -109,8 +109,7 @@ server = new PokemonGoMITM port: 8081
 		for cell in data.map_cells
 			addPokemon pokemon for pokemon in cell.wild_pokemons
 
-		if not currentLocation
-			return false
+		return false if not currentLocation
 
 		# Clean up expired pokemon
 		for pokemon in oldPokemons when pokemon.expirationMs > timestampMs
@@ -155,15 +154,17 @@ server = new PokemonGoMITM port: 8081
 			"#{name} #{direction} #{distance}m expires #{expires}"
 
 		# Create map marker for pokemon location
-		pokemonMarker = (pokemon) ->
+		markers = {}
+		addMarker = (pokemon) ->
+			position = new LatLon pokemon.latitude, pokemon.longitude
+			return if mapTooFar < currentLocation.distanceTo position
+			if markers[pokemon.data.pokemon_id]
+				markers[pokemon.data.pokemon_id] += "%7C#{pokemon.latitude},#{pokemon.longitude}"
+				return
 			label = pokemon.data.pokemon_id.charAt(0)
 			icon = changeCase.paramCase pokemon.data.pokemon_id
-			position = new LatLon pokemon.latitude, pokemon.longitude
-			if mapTooFar < currentLocation.distanceTo position
-				return ""
 			marker = "label:#{label}%7Cicon:http://raw.github.com/msikma/pokesprite/master/icons/pokemon/regular/#{icon}.png"
-
-			"&markers=#{marker}%7C#{pokemon.latitude},#{pokemon.longitude}"
+			markers[pokemon.data.pokemon_id] = "&markers=#{marker}%7C#{pokemon.latitude},#{pokemon.longitude}"
 
 		for modifier in data.modifiers
 			if modifier.item_id is 'ITEM_TROY_DISK'
@@ -183,8 +184,10 @@ server = new PokemonGoMITM port: 8081
 			if spMarkers.length 
 				img += "&markers=color:green%7Csize:tiny#{spMarkers}"
 
+
 			if pokemons.length
-				img += (pokemonMarker(pokemon) for pokemon in pokemons).join ""
+				addMarker(pokemon) for pokemon in pokemons
+				img += (marker for marker in markers).join ""
 
 			data.image_urls.unshift img
 
