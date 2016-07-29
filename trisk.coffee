@@ -33,6 +33,14 @@ handleEncounter = (data, action) ->
 	data
 
 server = new PokemonGoMITM port: 8081
+	.addResponseHandler "DownloadSettings", (data) ->
+		if data.settings
+			data.settings.map_settings.pokemon_visible_range = 1500
+			data.settings.map_settings.poke_nav_range_meters = 1500
+			data.settings.map_settings.encounter_range_meters = 100
+			data.settings.fort_settings.interaction_range_meters = 100
+			data.settings.fort_settings.max_total_deployed_pokemon = 50
+		data
 	# Append the IV% to the end of names in our inventory
 	.addResponseHandler "GetInventory", (data) ->
 		if data.inventory_delta
