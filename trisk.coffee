@@ -22,7 +22,6 @@ LatLon = require('geodesy').LatLonSpherical
 pokemons = []
 forts = []
 currentLocation = null
-maxDistance = 500 # Max distance before we we forget things
 mapRadius = 150 # Approx size of level 15 s2 cell
 
 # Get encounter details
@@ -92,7 +91,6 @@ server = new PokemonGoMITM port: 8081
 	# Parse the wild pokemons nearby
 	.addResponseHandler "GetMapObjects", (data) ->
 		return false if not data.map_cells.length
-		return false if not currentLocation
 
 		oldPokemons = pokemons
 		pokemons = []
@@ -106,28 +104,18 @@ server = new PokemonGoMITM port: 8081
 			console.log "new wild pokemon", pokemon
 			pokemons.push pokemon
 			seen[pokemon.encounter_id] = pokemon
-
 		for cell in data.map_cells
-			if cell.deleted_objects and cell.deleted_objects.length
-				console.log "deleted objects", cell.deleted_objects
-
 			addPokemon pokemon for pokemon in cell.wild_pokemons
 
 		# Use server timestamp
 		timestampMs = Number(data.map_cells[0].current_timestamp_ms)
-		# Add previously known pokemon, unless expired or out of range
+		# Add previously known pokemon, unless expired
 		for pokemon in oldPokemons when not seen[pokemon.encounter_id]
 			expirationMs = Number(pokemon.last_modified_timestamp_ms) + pokemon.time_till_hidden_ms
-			continue if expirationMs < timestampMs
-			position = new LatLon pokemon.latitude, pokemon.longitude
-			if maxDistance > currentLocation.distanceTo position
-				pokemons.push pokemon
-		# Sort pokemons by distance
-		pokemons.sort (p1, p2) ->
-			d1 = currentLocation.distanceTo new LatLon(p1.latitude, p1.longitude)
-			d2 = currentLocation.distanceTo new LatLon(p2.latitude, p2.longitude)
-			d1 - d2
+			pokemons.push pokemon unless expirationMs < timestampMs
+			seen[pokemon.encounter_id] = pokemon
 		# Correct nearby steps display for known nearby Pokémon (idea by @zaksabeast)
+		return false if not currentLocation
 		for cell in data.map_cells
 			for nearby in cell.nearby_pokemons when seen[nearby.encounter_id]
 				pokemon = seen[nearby.encounter_id]
@@ -145,6 +133,11 @@ server = new PokemonGoMITM port: 8081
 			position = new LatLon pokemon.latitude, pokemon.longitude
 			if mapRadius > currentLocation.distanceTo position
 				mapPokemons.push pokemon
+		# Sort pokemons by distance
+		mapPokemons.sort (p1, p2) ->
+			d1 = currentLocation.distanceTo new LatLon(p1.latitude, p1.longitude)
+			d2 = currentLocation.distanceTo new LatLon(p2.latitude, p2.longitude)
+			d1 - d2
 
 		# Populate some neat info about the pokemon's whereabouts
 		pokemonInfo = (pokemon) ->
@@ -192,8 +185,6 @@ server = new PokemonGoMITM port: 8081
 			img = "http://maps.googleapis.com/maps/api/staticmap?" +
 				"center=#{loc}&zoom=17&size=384x512&markers=color:blue%7Csize:tiny%7C#{loc}"
 			img += (marker for id, marker of markers).join ""
-			console.log "img url", img
-			console.log "markers", markers
 			data.image_urls.unshift img
 
 		data.description = info
