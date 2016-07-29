@@ -165,7 +165,6 @@ server = new PokemonGoMITM port: 8081
 				when bearing>60 then "→"
 				when bearing>15 then "↗"
 				else "↑"
-
 			addMarker(pokemon.pokemon_data.pokemon_id, pokemon.latitude, pokemon.longitude)
 
 			"#{name} #{direction} #{distance}m expires #{expires}"
@@ -192,7 +191,9 @@ server = new PokemonGoMITM port: 8081
 			loc = "#{currentLocation.lat},#{currentLocation.lon}"
 			img = "http://maps.googleapis.com/maps/api/staticmap?" +
 				"center=#{loc}&zoom=17&size=384x512&markers=color:blue%7Csize:tiny%7C#{loc}"
-			img += (marker for marker in markers).join ""
+			img += (marker for id, marker of markers).join ""
+			console.log "img url", img
+			console.log "markers", markers
 			data.image_urls.unshift img
 
 		data.description = info
