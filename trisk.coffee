@@ -94,7 +94,7 @@ server = new PokemonGoMITM port: 8081
 	# Parse the wild pokemons nearby
 	.addResponseHandler "GetMapObjects", (data) ->
 		timestampMs = Date.now()
-		tooFar = 200
+		tooFar = 500
 
 		oldPokemons = pokemons
 		pokemons = []
@@ -104,15 +104,15 @@ server = new PokemonGoMITM port: 8081
 			return if pokemon.time_till_hidden_ms < 0
 
 			expirationMs = timestampMs + pokemon.time_till_hidden_ms
-			seen[pokemon.encounter_id] = expirationMs
 
 			console.log "new wild pokemon", pokemon
-			pokemons.push
+			len = pokemons.push
 				encounterId: pokemon.encounter_id
 				latitude: pokemon.latitude
 				longitude: pokemon.longitude
 				expirationMs: expirationMs
 				data: pokemon.pokemon_data
+			seen[pokemon.encounter_id] = pokemon[len - 1]
 
 		for cell in data.map_cells
 			addPokemon pokemon for pokemon in cell.wild_pokemons
@@ -125,6 +125,13 @@ server = new PokemonGoMITM port: 8081
 			position = new LatLon pokemon.latitude, pokemon.longitude
 			if tooFar > currentLocation.distanceTo position
 				pokemons.push pokemon
+
+		# Correct nearby steps display for known Pokémon
+		for cell in data.map_cells
+			for nearby in cell.nearby_pokemons when seen[nearby.encounter_id]
+				pokemon = seen[nearby.encounter_id]
+				position = new LatLon pokemon.latitude, pokemon.longitude
+				nearby.distance_in_meters = Math.floor currentLocation.distanceTo position
 
 		# Sort by nearest (rounded to 10m)
 		pokemons.sort (p1, p2) ->
