@@ -61,8 +61,8 @@ server = new PokemonGoMITM port: 8081
 		console.log "[+] Current position of the player #{currentLocation}"
 
 		for fort in forts when fort.type is 'CHECKPOINT'
-			#if not fort.cooldown_complete_timestamp_ms or Date.now() >= parseInt(fort.cooldown_complete_timestamp_ms) - 7200000 + 300000
-			if not fort.cooldown_complete_timestamp_ms or timestampMs >= parseInt(fort.cooldown_complete_timestamp_ms)
+			#if not fort.cooldown_complete_timestamp_ms or Date.now() >= Number(fort.cooldown_complete_timestamp_ms) - 7200000 + 300000
+			if not fort.cooldown_complete_timestamp_ms or timestampMs >= fort.cooldown_complete_timestamp_ms
 				position = new LatLon fort.latitude, fort.longitude
 				distance = Math.floor currentLocation.distanceTo position
 				if distance < 30
@@ -93,35 +93,30 @@ server = new PokemonGoMITM port: 8081
 		false
 	# Parse the wild pokemons nearby
 	.addResponseHandler "GetMapObjects", (data) ->
-		timestampMs = Date.now()
-		tooFar = 500
-
 		oldPokemons = pokemons
 		pokemons = []
 		seen = {}
+
+		timestampMs = Date.now()
+		tooFar = 500
+
 		addPokemon = (pokemon) ->
 			return if seen[pokemon.encounter_id]
 			return if pokemon.time_till_hidden_ms < 0
 
-			expirationMs = timestampMs + pokemon.time_till_hidden_ms
-
 			console.log "new wild pokemon", pokemon
-			len = pokemons.push
-				encounterId: pokemon.encounter_id
-				latitude: pokemon.latitude
-				longitude: pokemon.longitude
-				expirationMs: expirationMs
-				data: pokemon.pokemon_data
-			seen[pokemon.encounter_id] = pokemon[len - 1]
+			len = pokemons.push pokemon
+			seen[pokemon.encounter_id] = pokemon
 
 		for cell in data.map_cells
 			addPokemon pokemon for pokemon in cell.wild_pokemons
 
 		return false if not currentLocation
 
-		# Clean up expired pokemon
-		for pokemon in oldPokemons when pokemon.expirationMs > timestampMs
-			continue if seen[pokemon.encounterId]
+		# Add previously scanned pokemon, clean up expired
+		for pokemon in oldPokemons when not seen[pokemon.encounter_id]
+			expirationMs = Number(pokemon.last_modified_timestamp_ms) + pokemon.time_till_hidden_ms
+			continue if expirationMs < timestampMs
 			position = new LatLon pokemon.latitude, pokemon.longitude
 			if tooFar > currentLocation.distanceTo position
 				pokemons.push pokemon
@@ -149,10 +144,10 @@ server = new PokemonGoMITM port: 8081
 
 		# Populate some neat info about the pokemon's whereabouts
 		pokemonInfo = (pokemon) ->
-			name = changeCase.titleCase pokemon.data.pokemon_id
-
+			name = changeCase.titleCase pokemon.pokemon_data.pokemon_id
+			expirationMs = Number(pokemon.last_modified_timestamp_ms) + pokemon.time_till_hidden_ms
 			position = new LatLon pokemon.latitude, pokemon.longitude
-			expires = moment(Number(pokemon.expirationMs)).fromNow()
+			expires = moment(expirationMs).fromNow()
 			distance = Math.floor currentLocation.distanceTo position
 			bearing = currentLocation.bearingTo position
 			direction = switch true
@@ -173,13 +168,13 @@ server = new PokemonGoMITM port: 8081
 		addMarker = (pokemon) ->
 			position = new LatLon pokemon.latitude, pokemon.longitude
 			return if mapTooFar < currentLocation.distanceTo position
-			if markers[pokemon.data.pokemon_id]
-				markers[pokemon.data.pokemon_id] += "%7C#{pokemon.latitude},#{pokemon.longitude}"
+			if markers[pokemon.pokemon_data.pokemon_id]
+				markers[pokemon.pokemon_data.pokemon_id] += "%7C#{pokemon.latitude},#{pokemon.longitude}"
 				return
-			label = pokemon.data.pokemon_id.charAt(0)
-			icon = changeCase.paramCase pokemon.data.pokemon_id
+			label = pokemon.pokemon_data.pokemon_id.charAt(0)
+			icon = changeCase.paramCase pokemon.pokemon_data.pokemon_id
 			marker = "label:#{label}%7Cicon:http://raw.github.com/msikma/pokesprite/master/icons/pokemon/regular/#{icon}.png"
-			markers[pokemon.data.pokemon_id] = "&markers=#{marker}%7C#{pokemon.latitude},#{pokemon.longitude}"
+			markers[pokemon.pokemon_data.pokemon_id] = "&markers=#{marker}%7C#{pokemon.latitude},#{pokemon.longitude}"
 
 		for modifier in data.modifiers
 			if modifier.item_id is 'ITEM_TROY_DISK'
