@@ -20,9 +20,10 @@ moment = require 'moment'
 LatLon = require('geodesy').LatLonSpherical
 
 pokemons = []
-spawnPoints = []
 forts = []
 currentLocation = null
+maxDistance = 500 # Max distance before we we forget things
+mapRadius = 150 # Approx size of level 15 s2 cell
 
 # Get encounter details
 handleEncounter = (data, action) ->
@@ -85,20 +86,11 @@ server = new PokemonGoMITM port: 8081
 			for fort in cell.forts
 				forts.push fort
 		false
-	.addResponseHandler "GetMapObjects", (data) ->
-		spawnPoints = []
-		for cell in data.map_cells
-			for sp in cell.spawn_points
-			    spawnPoints.push sp
-		false
 	# Parse the wild pokemons nearby
 	.addResponseHandler "GetMapObjects", (data) ->
 		oldPokemons = pokemons
 		pokemons = []
 		seen = {}
-
-		timestampMs = Date.now()
-		tooFar = 500
 
 		addPokemon = (pokemon) ->
 			return if seen[pokemon.encounter_id]
@@ -108,31 +100,33 @@ server = new PokemonGoMITM port: 8081
 			len = pokemons.push pokemon
 			seen[pokemon.encounter_id] = pokemon
 
+		# Store wild pokemons
 		for cell in data.map_cells
 			addPokemon pokemon for pokemon in cell.wild_pokemons
 
 		return false if not currentLocation
 
-		# Add previously scanned pokemon, clean up expired
+		# Add previously known pokemon, unless expired or out of range
+		timestampMs = Date.now()
 		for pokemon in oldPokemons when not seen[pokemon.encounter_id]
 			expirationMs = Number(pokemon.last_modified_timestamp_ms) + pokemon.time_till_hidden_ms
 			continue if expirationMs < timestampMs
 			position = new LatLon pokemon.latitude, pokemon.longitude
-			if tooFar > currentLocation.distanceTo position
+			if maxDistance > currentLocation.distanceTo position
 				pokemons.push pokemon
 
-		# Correct nearby steps display for known Pokémon
+		# Correct nearby steps display for known nearby Pokémon (idea by @zaksabeast)
 		for cell in data.map_cells
 			for nearby in cell.nearby_pokemons when seen[nearby.encounter_id]
 				pokemon = seen[nearby.encounter_id]
 				position = new LatLon pokemon.latitude, pokemon.longitude
 				nearby.distance_in_meters = Math.floor currentLocation.distanceTo position
 
-		# Sort by nearest (rounded to 10m)
+		# Sort pokemons by distance
 		pokemons.sort (p1, p2) ->
 			d1 = currentLocation.distanceTo new LatLon(p1.latitude, p1.longitude)
 			d2 = currentLocation.distanceTo new LatLon(p2.latitude, p2.longitude)
-			Math.floor((d1 - d2) / 10)
+			d1 - d2
 
 		false
 
@@ -140,11 +134,18 @@ server = new PokemonGoMITM port: 8081
 	.addResponseHandler "FortDetails", (data) ->
 		console.log "fetched fort request", data
 		info = ""
-		mapTooFar = 150
+
+		# Limit to map radius
+		mapPokemons = []
+		for pokemon in pokemons
+			position = new LatLon pokemon.latitude, pokemon.longitude
+			if mapRadius > currentLocation.distanceTo position
+				mapPokemons.push pokemon
 
 		# Populate some neat info about the pokemon's whereabouts
 		pokemonInfo = (pokemon) ->
 			name = changeCase.titleCase pokemon.pokemon_data.pokemon_id
+			name = name.replace(" Male", "♂").replace(" Female", "♀")
 			expirationMs = Number(pokemon.last_modified_timestamp_ms) + pokemon.time_till_hidden_ms
 			position = new LatLon pokemon.latitude, pokemon.longitude
 			expires = moment(expirationMs).fromNow()
@@ -161,50 +162,35 @@ server = new PokemonGoMITM port: 8081
 				when bearing>15 then "↗"
 				else "↑"
 
+			addMarker(pokemon.pokemon_data.pokemon_id, pokemon.latitude, pokemon.longitude)
+
 			"#{name} #{direction} #{distance}m expires #{expires}"
 
 		# Create map marker for pokemon location
 		markers = {}
-		addMarker = (pokemon) ->
-			position = new LatLon pokemon.latitude, pokemon.longitude
-			return if mapTooFar < currentLocation.distanceTo position
-			if markers[pokemon.pokemon_data.pokemon_id]
-				markers[pokemon.pokemon_data.pokemon_id] += "%7C#{pokemon.latitude},#{pokemon.longitude}"
-				return
-			label = pokemon.pokemon_data.pokemon_id.charAt(0)
-			icon = changeCase.paramCase pokemon.pokemon_data.pokemon_id
-			marker = "label:#{label}%7Cicon:http://raw.github.com/msikma/pokesprite/master/icons/pokemon/regular/#{icon}.png"
-			markers[pokemon.pokemon_data.pokemon_id] = "&markers=#{marker}%7C#{pokemon.latitude},#{pokemon.longitude}"
+		addMarker = (id, lat, lon) ->
+			label = id.charAt(0)
+			name = changeCase.paramCase id.replace(/_([MF]).*/, "_$1")
+			icon = "http://raw.github.com/msikma/pokesprite/master/icons/pokemon/regular/#{name}.png"
+			marker = "&markers=label:#{label}%7Cicon:#{icon}"
+			markers[id] = marker if not markers[id]
+			markers[id] += "%7C#{lat},#{lon}"
 
-		for modifier in data.modifiers
-			if modifier.item_id is 'ITEM_TROY_DISK'
-				expires = moment(Number(modifier.expiration_timestamp_ms)).fromNow()
-				info += "Lure by #{modifier.deployer_player_codename} expires #{expires}\n"
+		for modifier in data.modifiers when modifier.item_id is 'ITEM_TROY_DISK'
+			expires = moment(Number(modifier.expiration_timestamp_ms)).fromNow()
+			info += "Lure by #{modifier.deployer_player_codename} expires #{expires}\n"
 
 		if currentLocation
+			info += if mapPokemons.length
+				(pokemonInfo(pokemon) for pokemon in mapPokemons).join "\n"
+			else
+				"No wild Pokémon near you..."
+
 			loc = "#{currentLocation.lat},#{currentLocation.lon}"
-			img = "http://maps.googleapis.com/maps/api/staticmap?center=#{loc}&zoom=17&size=384x512&markers=color:blue%7Csize:tiny%7C#{loc}"
-
-			spMarkers = ""
-			for sp in spawnPoints
-				position = new LatLon sp.latitude, sp.longitude
-				if mapTooFar > currentLocation.distanceTo position
-					spMarkers += "%7C#{sp.latitude},#{sp.longitude}"
-
-			if spMarkers.length 
-				img += "&markers=color:green%7Csize:tiny#{spMarkers}"
-
-
-			if pokemons.length
-				addMarker(pokemon) for pokemon in pokemons
-				img += (marker for marker in markers).join ""
-
+			img = "http://maps.googleapis.com/maps/api/staticmap?" +
+				"center=#{loc}&zoom=17&size=384x512&markers=color:blue%7Csize:tiny%7C#{loc}"
+			img += (marker for marker in markers).join ""
 			data.image_urls.unshift img
-
-		info += if pokemons.length and currentLocation
-			(pokemonInfo(pokemon) for pokemon in pokemons).join "\n"
-		else
-			"No wild Pokémon near you..."
 
 		data.description = info
 		data
