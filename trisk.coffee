@@ -41,13 +41,18 @@ server = new PokemonGoMITM port: 8081
 			data.settings.fort_settings.interaction_range_meters = 100
 			data.settings.fort_settings.max_total_deployed_pokemon = 50
 		data
-	# Append the IV% to the end of names in our inventory
+	# Always get the full inventory
+	.addRequestHandler "GetInventory", (data) ->
+		data.last_timestamp_ms = 0
+		data
+
+	# Append IV% to existing Pokémon names
 	.addResponseHandler "GetInventory", (data) ->
 		if data.inventory_delta
 			for item in data.inventory_delta.inventory_items when item.inventory_item_data
 				if pokemon = item.inventory_item_data.pokemon_data
-					name = pokemon.nickname or changeCase.titleCase pokemon.pokemon_id
-					name = name.replace(" Male", "♂").replace(" Female", "♀")
+					id = changeCase.titleCase pokemon.pokemon_id
+					name = pokemon.nickname or id.replace(" Male", "♂").replace(" Female", "♀")
 					atk = pokemon.individual_attack or 0
 					def = pokemon.individual_defense or 0
 					sta = pokemon.individual_stamina or 0
@@ -55,6 +60,7 @@ server = new PokemonGoMITM port: 8081
 					pokemon.nickname = "#{name} #{iv}%"
 
 		data
+
 	# Fetch our current location as soon as it gets passed to the API
 	.addRequestHandler "GetMapObjects", (data) ->
 		currentLocation = new LatLon data.latitude, data.longitude
