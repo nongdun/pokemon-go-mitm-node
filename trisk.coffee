@@ -74,6 +74,7 @@ server = new PokemonGoMITM port: 8081
 			for fort in cell.forts
 				forts.push fort
 
+		return false
 		# Use server timestamp
 		timestampMs = Number(data.map_cells[0].current_timestamp_ms)
 		for fort in forts when fort.type is 'CHECKPOINT'
