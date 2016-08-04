@@ -114,10 +114,16 @@ class PokemonGoMITM
             @log "[-] Parsing protobuf of #{protoId} failed.."
             continue
           console.log "[+] Request #{protoId} found: ", decoded
+          if protoId is "GetMapObjects" and decoded.cell_id
+            cellid = decoded.cell_id[0]
+            decoded.cell_id[0] = '' + (Number(decoded.cell_id[0]) - 1)
+            console.log "Modifying GetMapObjects cell_id[0] from #{cellid} to " + decoded.cell_id[0]
+          originalResponse = _.cloneDeep decoded
+          request.request_message = POGOProtos.serialize decoded, proto
+          #console.log "[+] Modified RequestEnvelope: ", data
 
         #data.unknown6 = {}
-        data.unknown6.unknown2.unknown1.fill(0xfeedface)
-        console.log "[+] Modified RequestEnvelope: ", data
+        #data.unknown6.unknown2.unknown1.fill(0xfeedface)
         buffer2 = POGOProtos.serialize data, @requestEnvelope
         #if buffer2.compare(buffer) != 0
         #  console.log "can't reconstruct buffer correctly"
