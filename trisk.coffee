@@ -32,22 +32,29 @@ handleEncounter = (data, action) ->
 		data.capture_probability.capture_probability = new Float32Array [1, 1, 1]
 	data
 
-server = new PokemonGoMITM port: 8081
-	.addResponseHandler "DownloadSettings", (data) ->
-		if data.settings
-			data.settings.map_settings.pokemon_visible_range = 1500
-			data.settings.map_settings.poke_nav_range_meters = 1500
-			data.settings.map_settings.encounter_range_meters = 100
-			data.settings.fort_settings.interaction_range_meters = 100
-			data.settings.fort_settings.max_total_deployed_pokemon = 50
-		data
+server = new PokemonGoMITM port: 8081, debug: true
+	#.addResponseHandler "DownloadSettings", (data) ->
+	#	if data.settings
+	#		data.settings.map_settings.pokemon_visible_range = 1500
+	#		data.settings.map_settings.poke_nav_range_meters = 1500
+	#		data.settings.map_settings.encounter_range_meters = 100
+	#		data.settings.fort_settings.interaction_range_meters = 50
+	#		data.settings.fort_settings.max_total_deployed_pokemon = 50
+	#	data
 	# Always get the full inventory
+	.addRequestHandler "*", (data, action) ->
+		console.log "[<-] Request #{action}:", data
+	.addResponseHandler "*", (data, action) ->
+		console.log "[<-] Response #{action}:", data
+
 	.addRequestHandler "GetInventory", (data) ->
+		return false
 		data.last_timestamp_ms = 0
 		data
 
 	# Append IV% to existing Pokémon names
 	.addResponseHandler "GetInventory", (data) ->
+		return false
 		if data.inventory_delta
 			for item in data.inventory_delta.inventory_items when item.inventory_item_data
 				if pokemon = item.inventory_item_data.pokemon_data
@@ -63,11 +70,13 @@ server = new PokemonGoMITM port: 8081
 
 	# Fetch our current location as soon as it gets passed to the API
 	.addRequestHandler "GetMapObjects", (data) ->
+		return false
 		currentLocation = new LatLon data.latitude, data.longitude
 		console.log "[+] Current position of the player #{currentLocation}"
 		false
 
 	.addResponseHandler "GetMapObjects", (data) ->
+		return false
 		return false if not data.map_cells.length
 		forts = []
 		for cell in data.map_cells
@@ -97,6 +106,7 @@ server = new PokemonGoMITM port: 8081
 		false
 	# Parse the wild pokemons nearby
 	.addResponseHandler "GetMapObjects", (data) ->
+		return false
 		return false if not data.map_cells.length
 
 		oldPokemons = pokemons
@@ -131,6 +141,7 @@ server = new PokemonGoMITM port: 8081
 		data
 	# Whenever a poke spot is opened, populate it with the radar info!
 	.addResponseHandler "FortDetails", (data) ->
+		return false
 		console.log "fetched fort request", data
 		info = ""
 
@@ -218,3 +229,4 @@ server = new PokemonGoMITM port: 8081
 	# show incense response
 	.addResponseHandler "GetIncensePokemon", (data) ->
 		console.log "incense pokemon", data
+		false
