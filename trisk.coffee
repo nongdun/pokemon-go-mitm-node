@@ -54,7 +54,6 @@ server = new PokemonGoMITM port: 8081, debug: true
 
 	# Append IV% to existing Pokémon names
 	.addResponseHandler "GetInventory", (data) ->
-		return false
 		if data.inventory_delta
 			for item in data.inventory_delta.inventory_items when item.inventory_item_data
 				if pokemon = item.inventory_item_data.pokemon_data
@@ -70,13 +69,11 @@ server = new PokemonGoMITM port: 8081, debug: true
 
 	# Fetch our current location as soon as it gets passed to the API
 	.addRequestHandler "GetMapObjects", (data) ->
-		return false
 		currentLocation = new LatLon data.latitude, data.longitude
 		console.log "[+] Current position of the player #{currentLocation}"
 		false
 
 	.addResponseHandler "GetMapObjects", (data) ->
-		return false
 		return false if not data.map_cells.length
 		forts = []
 		for cell in data.map_cells
@@ -106,7 +103,6 @@ server = new PokemonGoMITM port: 8081, debug: true
 		false
 	# Parse the wild pokemons nearby
 	.addResponseHandler "GetMapObjects", (data) ->
-		return false
 		return false if not data.map_cells.length
 
 		oldPokemons = pokemons
@@ -141,7 +137,6 @@ server = new PokemonGoMITM port: 8081, debug: true
 		data
 	# Whenever a poke spot is opened, populate it with the radar info!
 	.addResponseHandler "FortDetails", (data) ->
-		return false
 		console.log "fetched fort request", data
 		info = ""
 
